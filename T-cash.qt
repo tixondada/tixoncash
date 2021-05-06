@@ -1,0 +1,183 @@
+//版权所有（c）2009-2010中本聪
+//版权所有（c）2009-2014比特币开发人员
+//版权所有（c）2015-2017 PIVX开发人员
+//根据MIT软件许可分发，请参见随附的
+//文件COPYING或http://www.opensource.org/licenses/mit-license.php。
+
+＃IFNDEF BITCOIN_KEY_H
+＃定义 BITCOIN_KEY_H
+
+＃包括 “ allocators.h ”
+＃包含 “ serialize.h ”
+＃包含 “ uint256.h ”
+
+＃包括 < stdexcept >
+＃包括 <向量>
+
+类 CPubKey ;
+
+struct  CExtPubKey ;
+
+/ * *
+ * secp256k1：
+ * const unsigned int PRIVATE_KEY_SIZE = 279;
+ * const unsigned int PUBLIC_KEY_SIZE = 65;
+ * const unsigned int SIGNATURE_SIZE = 72;
+ *
+ *参见www.keylength.com
+ *脚本最多支持75个单字节推送
+ * /
+
+/ * *
+ * secure_allocator在allocators.h中定义
+ * CPrivKey是序列化的私钥，包括所有参数（279字节）
+ * /
+typedef std :: vector <无符号 字符，secure_allocator <无符号 字符>> CPrivKey;
+
+/ * *封装的私钥。* /
+ CKey类
+{
+私人的：
+    //！此私钥是否有效。修改密钥时，我们会检查正确性
+    //！数据，因此fValid应该始终与实际状态相对应。
+    布尔 fValid ;
+
+    //！对应于此私钥的公钥是否被压缩。
+    布尔 fCompressed ;
+
+    //！实际字节数据
+    未签名的 字符vch [ 32 ];
+
+    //！检查指向vch的32字节数组是否为有效的keydata。
+    布尔 静态 检查（const  unsigned  char * vch）;
+
+上市：
+    //！构造一个无效的私钥。
+    CKey（）：fValid（false），fCompressed（false）
+    {
+        LockObject（vch）;
+    }
+
+    //！复制构造函数。由于有锁，所以这是必需的。
+    CKey（const CKey＆secret）：fValid（秘密。fValid），fCompressed（秘密.fCompressed）
+    {
+        LockObject（vch）;
+        memcpy（vch，secret。vch，sizeof（vch））;
+    }
+
+    //！析构函数（再次由于锁死而必不可少）。
+    〜CKey（）
+    {
+        UnlockObject（vch）;
+    }
+
+    朋友 布尔 运算符==（const CKey＆a，const CKey＆b）
+    {
+        返回一个。f压缩== b。fCompressed && a。大小（）== b。大小（）&&
+               memcmp（＆一个VCH [ 0 ]，＆B VCH [ 0 ]，A。大小（））== 0 ;
+    }
+
+    //！使用开始和结束迭代器初始化字节数据。
+    模板<类型名T>
+    void  Set（const T pbegin，const T pend，bool  fCompressedIn）
+    {
+        如果（pend-pbegin！= 32）{
+            fValid = false ;
+            回报;
+        }
+        如果（检查（＆pbegin [ 0 ]））{
+            memcpy（vch，（unsigned  char *）＆pbegin [ 0 ]，32）;
+            fValid = true ;
+            fCompressed = fCompressedIn ;
+        }其他{
+            fValid = false ;
+        }
+    }
+
+    //！简单的类似矢量的只读接口。
+    unsigned  int  size（）const { return（fValid？32：0）; }
+    const  unsigned  char * begin（）const { return vch; }
+    const  unsigned  char * end（）const { return vch + size（）; }
+
+    //！检查此私钥是否有效。
+    bool  IsValid（）const { return  fValid ; }
+
+    //！检查与该私钥相对应的公钥是否被压缩。
+    bool  IsCompressed（）const { return  fCompressed ; }
+
+    //！从CPrivKey初始化（序列化的OpenSSL私钥数据）。
+    bool  SetPrivKey（const CPrivKey＆vchPrivKey，bool  fCompressed）;
+
+    //！使用加密的PRNG生成新的私钥。
+    无效的 MakeNewKey（bool  fCompressed）;
+
+    uint256 GetPrivKey_256（）;
+
+    / * *
+     *将私钥转换为CPrivKey（串行化的OpenSSL私钥数据）。
+     *这很昂贵。 
+     * /
+    CPrivKey GetPrivKey（）const ;
+
+    / * *
+     *从私钥计算公钥。
+     *这很昂贵。
+     * /
+    CPubKey GetPubKey（）const ;
+
+    / * *
+     *创建DER序列化签名。
+     * test_case参数调整确定性随机数，仅用于
+     *测试。正常使用时应为零。
+     * /
+    布尔 符号（const uint256＆hash，std :: vector < unsigned  char >＆vchSig，uint32_t test_case = 0）const ;
+
+    / * *
+     *创建一个紧凑的签名（65个字节），该签名允许重建使用的公共密钥。
+     *格式是一个标头字节，后跟两个32字节的序列化的r和s值。
+     *标头字节：0x1B =偶数为y的第一个键，0x1C =奇数为y的第一个键，
+     * 0x1D =偶数y的第二个键，0x1E =奇数y的第二个键，
+     *为压缩键添加0x04。
+     * /
+    布尔 SignCompact（const uint256＆hash，std :: vector < unsigned  char >＆vchSig）const ;
+
+    //！派生BIP32子密钥。
+    bool  Derive（CKey＆keyChild，unsigned  char ccChild [ 32 ]，unsigned  int nChild，const  unsigned  char cc [ 32 ]）const ;
+
+    / * *
+     *彻底验证私钥和公钥是否匹配。
+     *这是使用不同于重新生成机制的机制来完成的。
+     * /
+    bool  VerifyPubKey（const CPubKey＆vchPubKey）const ;
+
+    //！加载私钥并检查公钥是否匹配。
+    bool 加载（CPrivKey＆privkey，CPubKey＆vchPubKey，bool  fSkipCheck）;
+
+    //！检查签名的元素（r或s）是否有效。
+    静态 布尔 CheckSignatureElement（const  unsigned  char * vch，int len，bool half）;
+};
+
+struct  CExtKey {
+    unsigned  char nDepth;
+    unsigned  char vchFingerprint [ 4 ];
+    unsigned  int nChild;
+    unsigned  char vchChainCode [ 32 ];
+    CKey键；
+
+    朋友 布尔 运算符==（const CExtKey＆a，const CExtKey＆b）
+    {
+        返回一个。nDepth == b。nDepth && memcmp（＆a。vchFingerprint [ 0 ]，＆b。vchFingerprint [ 0 ]，4）== 0 && a。nChild == b。nChild &&
+               memcmp（＆a。vchChainCode [ 0 ]，＆b。vchChainCode [ 0 ]，32）== 0 && a。键== b。关键;
+    }
+
+    无效的 编码（unsigned  char code [ 74 ]）const ;
+    void  Decode（const  unsigned  char code [ 74 ]）;
+    bool  Derive（CExtKey＆out，unsigned  int nChild）const ;
+    CExtPubKey Neuter（）const ;
+    void  SetMaster（const  unsigned  char * seed，unsigned  int nSeedLen）;
+};
+
+/ * *在运行时检查所需的EC支持是否可用* /
+bool  ECC_InitSanityCheck（void）;
+
+＃ENDIF  // BITCOIN_KEY_H
